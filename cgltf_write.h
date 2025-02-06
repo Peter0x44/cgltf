@@ -107,6 +107,13 @@ typedef struct {
 
 #define CGLTF_MIN(a, b) (a < b ? a : b)
 
+#define WRITE32LE(P, V)               \
+  ((P)[0] = (0x000000FF & (V)) >>  0, \
+   (P)[1] = (0x0000FF00 & (V)) >>  8, \
+   (P)[2] = (0x00FF0000 & (V)) >> 16, \
+   (P)[3] = (0xFF000000 & (V)) >> 24)
+
+
 #ifdef FLT_DECIMAL_DIG
 	// FLT_DECIMAL_DIG is C11
 	#define CGLTF_DECIMAL_DIG (FLT_DECIMAL_DIG)
@@ -1216,15 +1223,15 @@ static void cgltf_write_glb(FILE* file, const void* json_buf, const cgltf_size j
 	}
 
 	// Write a GLB header
-	memcpy(header, &GlbMagic, 4);
-	memcpy(header + 4, &GlbVersion, 4);
-	memcpy(header + 8, &total_size, 4);
+	WRITE32LE(header, GlbMagic);
+	WRITE32LE(header + 4, GlbVersion);
+	WRITE32LE(header + 8, total_size);
 	fwrite(header, 1, GlbHeaderSize, file);
 
 	// Write a JSON chunk (header & data)
 	uint32_t json_chunk_size = (uint32_t)(json_size + json_padsize);
-	memcpy(chunk_header, &json_chunk_size, 4);
-	memcpy(chunk_header + 4, &GlbMagicJsonChunk, 4);
+	WRITE32LE(chunk_header, json_chunk_size);
+	WRITE32LE(chunk_header + 4, GlbMagicJsonChunk);
 	fwrite(chunk_header, 1, GlbChunkHeaderSize, file);
 
 	fwrite(json_buf, 1, json_size, file);
@@ -1233,8 +1240,8 @@ static void cgltf_write_glb(FILE* file, const void* json_buf, const cgltf_size j
 	if (bin_buf != NULL && bin_size > 0) {
 		// Write a binary chunk (header & data)
 		uint32_t bin_chunk_size = (uint32_t)(bin_size + bin_padsize);
-		memcpy(chunk_header, &bin_chunk_size, 4);
-		memcpy(chunk_header + 4, &GlbMagicBinChunk, 4);
+		WRITE32LE(chunk_header, bin_chunk_size);
+		WRITE32LE(chunk_header + 4, GlbMagicBinChunk);
 		fwrite(chunk_header, 1, GlbChunkHeaderSize, file);
 
 		fwrite(bin_buf, 1, bin_size, file);

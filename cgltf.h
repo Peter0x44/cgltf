@@ -101,6 +101,12 @@
 extern "C" {
 #endif
 
+#define READ16LE(S) ((255 & ((uint8_t*)S)[1]) << 8 | (255 & ((uint8_t*)S)[0]))
+
+#define READ32LE(S)                                                    \
+  ((uint32_t)(255 & ((uint8_t*)S)[3]) << 24 | (uint32_t)(255 & ((uint8_t*)S)[2]) << 16 | \
+   (uint32_t)(255 & ((uint8_t*)S)[1]) << 8  | (uint32_t)(255 & ((uint8_t*)S)[0]) << 0)
+
 typedef size_t cgltf_size;
 typedef long long int cgltf_ssize;
 typedef float cgltf_float;
@@ -1132,7 +1138,7 @@ cgltf_result cgltf_parse(const cgltf_options* options, const void* data, cgltf_s
 
 	uint32_t tmp;
 	// Magic
-	memcpy(&tmp, data, 4);
+	tmp = READ32LE(data);
 	if (tmp != GlbMagic)
 	{
 		if (fixed_options.type == cgltf_file_type_invalid)
@@ -1160,7 +1166,7 @@ cgltf_result cgltf_parse(const cgltf_options* options, const void* data, cgltf_s
 
 	const uint8_t* ptr = (const uint8_t*)data;
 	// Version
-	memcpy(&tmp, ptr + 4, 4);
+	tmp = READ32LE(ptr + 4);
 	uint32_t version = tmp;
 	if (version != GlbVersion)
 	{
@@ -1168,7 +1174,7 @@ cgltf_result cgltf_parse(const cgltf_options* options, const void* data, cgltf_s
 	}
 
 	// Total length
-	memcpy(&tmp, ptr + 8, 4);
+	tmp = READ32LE(ptr + 8);
 	if (tmp > size)
 	{
 		return cgltf_result_data_too_short;
@@ -1183,14 +1189,14 @@ cgltf_result cgltf_parse(const cgltf_options* options, const void* data, cgltf_s
 
 	// JSON chunk: length
 	uint32_t json_length;
-	memcpy(&json_length, json_chunk, 4);
+	json_length = READ32LE(json_chunk);
 	if (json_length > size - GlbHeaderSize - GlbChunkHeaderSize)
 	{
 		return cgltf_result_data_too_short;
 	}
 
 	// JSON chunk: magic
-	memcpy(&tmp, json_chunk + 4, 4);
+	tmp = READ32LE(json_chunk + 4);
 	if (tmp != GlbMagicJsonChunk)
 	{
 		return cgltf_result_unknown_format;
@@ -1208,14 +1214,14 @@ cgltf_result cgltf_parse(const cgltf_options* options, const void* data, cgltf_s
 
 		// Bin chunk: length
 		uint32_t bin_length;
-		memcpy(&bin_length, bin_chunk, 4);
+		bin_length = READ32LE(bin_chunk);
 		if (bin_length > size - GlbHeaderSize - GlbChunkHeaderSize - json_length - GlbChunkHeaderSize)
 		{
 			return cgltf_result_data_too_short;
 		}
 
 		// Bin chunk: magic
-		memcpy(&tmp, bin_chunk + 4, 4);
+		tmp = READ32LE(bin_chunk + 4);
 		if (tmp != GlbMagicBinChunk)
 		{
 			return cgltf_result_unknown_format;
@@ -1563,7 +1569,7 @@ static cgltf_size cgltf_calc_index_bound(cgltf_buffer_view* buffer_view, cgltf_s
 	case cgltf_component_type_r_16u:
 		for (size_t i = 0; i < count; ++i)
 		{
-			cgltf_size v = ((unsigned short*)data)[i];
+			cgltf_size v = READ16LE(((unsigned short*)data + i));
 			bound = bound > v ? bound : v;
 		}
 		break;
@@ -1571,7 +1577,7 @@ static cgltf_size cgltf_calc_index_bound(cgltf_buffer_view* buffer_view, cgltf_s
 	case cgltf_component_type_r_32u:
 		for (size_t i = 0; i < count; ++i)
 		{
-			cgltf_size v = ((unsigned int*)data)[i];
+			cgltf_size v = READ32LE(((unsigned int*)data + i));
 			bound = bound > v ? bound : v;
 		}
 		break;
@@ -2214,11 +2220,11 @@ static cgltf_ssize cgltf_component_read_integer(const void* in, cgltf_component_
 	switch (component_type)
 	{
 		case cgltf_component_type_r_16:
-			return *((const int16_t*) in);
+			return (int16_t) READ16LE(in);
 		case cgltf_component_type_r_16u:
-			return *((const uint16_t*) in);
+			return (uint16_t) READ16LE(in);
 		case cgltf_component_type_r_32u:
-			return *((const uint32_t*) in);
+			return (uint32_t) READ32LE(in);
 		case cgltf_component_type_r_8:
 			return *((const int8_t*) in);
 		case cgltf_component_type_r_8u:
@@ -2233,9 +2239,9 @@ static cgltf_size cgltf_component_read_index(const void* in, cgltf_component_typ
 	switch (component_type)
 	{
 		case cgltf_component_type_r_16u:
-			return *((const uint16_t*) in);
+			return (uint16_t) READ16LE(in);
 		case cgltf_component_type_r_32u:
-			return *((const uint32_t*) in);
+			return (uint32_t) READ32LE(in);
 		case cgltf_component_type_r_8u:
 			return *((const uint8_t*) in);
 		default:
@@ -2247,7 +2253,10 @@ static cgltf_float cgltf_component_read_float(const void* in, cgltf_component_ty
 {
 	if (component_type == cgltf_component_type_r_32f)
 	{
-		return *((const float*) in);
+		uint32_t tmp = READ32LE(in);
+		float ret;
+		memcpy(&ret, &tmp, sizeof(float));
+		return ret;
 	}
 
 	if (normalized)
@@ -2256,9 +2265,9 @@ static cgltf_float cgltf_component_read_float(const void* in, cgltf_component_ty
 		{
 			// note: glTF spec doesn't currently define normalized conversions for 32-bit integers
 			case cgltf_component_type_r_16:
-				return *((const int16_t*) in) / (cgltf_float)32767;
+				return ((int16_t) READ16LE(in)) / (cgltf_float)32767;
 			case cgltf_component_type_r_16u:
-				return *((const uint16_t*) in) / (cgltf_float)65535;
+				return ((uint16_t) READ16LE(in)) / (cgltf_float)65535;
 			case cgltf_component_type_r_8:
 				return *((const int8_t*) in) / (cgltf_float)127;
 			case cgltf_component_type_r_8u:
@@ -2459,13 +2468,13 @@ static cgltf_uint cgltf_component_read_uint(const void* in, cgltf_component_type
 			return *((const uint8_t*) in);
 
 		case cgltf_component_type_r_16:
-			return *((const int16_t*) in);
+			return (int16_t) READ16LE(in);
 
 		case cgltf_component_type_r_16u:
-			return *((const uint16_t*) in);
+			return (uint16_t) READ16LE(in);
 
 		case cgltf_component_type_r_32u:
-			return *((const uint32_t*) in);
+			return (uint32_t) READ32LE(in);
 
 		default:
 			return 0;

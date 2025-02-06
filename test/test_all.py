@@ -40,7 +40,7 @@ if __name__ == "__main__":
         os.makedirs("build/")
     os.chdir("build/")
     os.system("cmake ..")
-    if os.system("cmake --build .") != 0:
+    if os.system("cmake --build . -j22") != 0:
         print("Unable to build.")
         exit(1)
     os.chdir("..")
